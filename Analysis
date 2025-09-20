@@ -1,0 +1,237 @@
+# ANALYSIS — Hull Tactical Market Prediction
+
+This repository implements a full ML pipeline for predicting S&P 500 daily excess returns using the Hull Tactical dataset. The pipeline includes:
+- Robust EDA (distributional checks, PCA, rolling correlations, VaR/CVaR, Hurst, Granger causality, cointegration, and 20+ advanced analyses).
+- Feature imputation (forward/backfill + median), winsorization, rolling feature construction, and PCA.
+- A custom Keras neural net (Dense 256 → 128 → 64) trained with MSE loss; model saving and prediction pipeline included.
+- A volatility-constrained trading simulation and diagnostics (cumulative returns, drawdowns, rolling Sharpe).
+
+Key diagnostics from the run included:
+- Train shape (8990 x 98), sample PCA explained variance (PC1 ≈ 13.1%), 5% VaR ≈ -1.77%, CVaR ≈ -2.54%, Hurst ≈ 0.536.
+- Final training run reported low validation MAE (~0.0077).
+
+Important fixes applied / required:
+- Always save and version `feature_list.pkl` and `scaler.pkl` after training.
+- Clean correlation matrices (replace inf, mask NaNs) before plotting.
+- Save final submission as `submission.parquet` (Kaggle requirement).
+- Add purged time-series CV, transaction cost simulation, and Sharpe-optimized objectives for future experiments.
+
+Files to include in repo:
+- `notebooks/` (EDA + training), `src/` (scripts), `artifacts/feature_list.pkl`, `artifacts/scaler.pkl`, `artifacts/model.keras`, `submission.parquet`, `requirements.txt`, `ANALYSIS.md`.
+
+Next steps:
+- Implement purged walk-forward CV and ensemble stacking.
+- Run statistical significance tests vs simple benchmarks.
+- Add SHAP explainability to isolate robust signals.
+
+
+
+
+
+The PDF contains a full end-to-end Kaggle-style pipeline for predicting S&P 500 daily excess returns: data loading, preprocessing, large-scale EDA (basic + 20+ advanced analyses), a custom deep neural net, training, backtesting / simple volatility-constrained strategy simulation, and producing submission files. The pipeline is comprehensive and practical, but a few stability, reproducibility, and evaluation issues must be fixed before using the notebook as a canonical repo artifact. 
+
+hulltactical
+
+2 — What the notebook contains (high-level)
+
+Environment & imports: pandas, numpy, matplotlib, seaborn, plotly, scikit-learn, scipy, statsmodels, tensorflow/keras, xgboost/lightgbm on demand. 
+
+hulltactical
+
+Data: train.csv, test.csv, and kaggle_evaluation/ helpers provided. The train/test shapes printed are e.g. Train (8990, 98) and Test (10, 99) in the run used for the PDF. 
+
+hulltactical
+
+Target choice: automatically picks market_forward_excess_returns if present else forward_returns. 
+
+hulltactical
+
+Preprocessing: forward-fill/back-fill, median imputation, winsorization at 0.5% / 99.5% quantiles, drop low-presence columns (optional). 
+
+hulltactical
+
+EDA: distribution, rolling mean/vol, missingness heatmap, correlation heatmaps (sampled), PCA, and a large suite of 20+ advanced EDA items (VaR/CVaR, Hurst exponent, Granger causality, cointegration, CUSUM, quantile regression, tail dependence, calendar effects, rolling Sharpe, volatility clustering, spectral density, transition matrices, and more).
+
+Model: Keras DNN (Dense 256 → Dropout → Dense 128 → Dropout → Dense 64 → Dense 1), compiled with MSE loss and MAE metric; trained with many epochs (200 in the run) and early stopping heuristic via validation. Final training/validation numbers shown in the notebook are very low losses and low MAE (train loss ~8.6e-05; val_mae ~0.0077) for that run. 
+
+hulltactical
+
+Evaluation: regression metrics (MSE / MAE / R²), and conversion to positive/negative classification to compute accuracy, F1, precision, recall and confusion matrix. A simple volatility-constrained position sizing/backtest is used to compute strategy returns and cumulative return plots.
+
+Submission: predictions written to submission.csv (not parquet in the PDF; competition requires submission.parquet—need to change). Model saved (examples: hull_market_model1.h5, hull_market_model.keras).
+
+3 — Concrete numbers & diagnostics printed in the notebook
+
+(These exact values come from the runs captured in the PDF.)
+
+Train / test sizes: Train (8990, 98), Test (10, 99). 
+
+hulltactical
+
+PCA explained variance — first 6 PCs: [0.1311, 0.1075, 0.0848, 0.0611, 0.0433, 0.0401]. 
+
+hulltactical
+
+5% VaR: -0.017726, CVaR (mean lower 5%): -0.025440. 
+
+hulltactical
+
+Hurst exponent (fallback R/S): ≈ 0.53566 (noted; computed with some fallback). 
+
+hulltactical
+
+Lag correlations (sentiment vs returns): small positive but near-zero correlations by various lags (e.g. lag 0: 0.00482, lag 1: 0.00496, lag 21: ~0.00035). 
+
+hulltactical
+
+Cointegration example (Target vs I1): p-value ~2.99e-29 (strong evidence of cointegration in that pair / dataset slice). 
+
+hulltactical
+
+Final training run logs: epochs 1..200 with final train loss ~ 8.61e-05 and val MAE ≈ 0.0077. 
+
+hulltactical
+
+4 — Detailed EDA coverage (what was run)
+
+The notebook implements three levels of EDA:
+
+Basic EDA
+
+Target histogram & KDE, 252-day rolling mean & volatility, missingness heatmap, sampled correlation heatmap, PCA explained variance and a 6-PC summary. 
+
+hulltactical
+
+20+ Advanced analyses (implemented or attempted)
+
+Rolling Sharpe (252-day), VaR & CVaR, entropy/spectral density, Hurst exponent, Granger causality tests (lead-lag), cointegration tests, CUSUM structural-break tests, quantile regression (5% and 95%), transition matrix of return signs, tail dependence (copula-style lower-tail joint probabilities), calendar effects (day-of-week), rolling correlation matrices, rolling beta, volatility clustering (squared returns), QQ plots, autocorrelation & partial autocorrelation plots, feature volatility ranking, outlier counts (z-score method), PCA 2D scatter, KMeans clusters on PCA, and parallel coordinates.
+
+Visualization mini-plots
+
+A compact set of 10 mini EDA plots (histograms, KDEs, hexbin, rolling medians, strip/violin/boxen plots, interactive plotly scatter).
+
+5 — Modeling & training details
+
+Model architecture: Dense(256) → Dropout(0.3) → Dense(128) → Dropout(0.2) → Dense(64) → Dense(1). Activation: ReLU for hidden, linear for output. Optimizer: Adam (lr=0.001). Loss: MSE. Metric: MAE. 
+
+hulltactical
+
+Training regime: Train/validation split (80/20), epochs up to 200, batch size 32, verbose logs shown. It appears early stopping wasn’t consistently used in the snapshot; training ran all epochs. Final val MAE ~0.0077. 
+
+hulltactical
+
+Saving: Model saved as .h5 / .keras. Feature list saved via pickle (e.g., feature_list.pkl) in some runs. Scaler saving is recommended but the PDF sometimes misses it.
+
+6 — Results & backtesting
+
+A simple volatility-constrained strategy is implemented: predictions → convert to position exposures scaled to target annual volatility (e.g., 10% annualized) → clip to [-1,1] → compute strategy returns as position * excess_return → cumulative returns plotted vs buy-and-hold. This is demonstrative; the notebook prints strategy ann return / vol and Sharpe. 
+
+hulltactical
+
+The notebook includes drawdown calculations and rolling Sharpe (21-day) plots for diagnostics. 
+
+hulltactical
+
+7 — Problems, errors, and stability issues observed (and fixes)
+
+The notebook contains useful code but also shows errors/warnings recorded in the run. These must be addressed for a robust repo:
+
+1) Input shape / feature mismatch
+
+Symptom: When loading the saved model and scoring, the model expected 94 features but the test DataFrame had a different number (e.g., 97). This caused Keras errors like expected axis -1 ... value 94, but received ... 97.
+
+Fix: Save feature_list.pkl (exact list and order) and a fitted scaler.pkl at training time. Always align test columns to that list in the exact order (add missing features as zeros, drop extra features). See the notebook’s partial saving of feature_list.pkl but ensure it is always created.
+
+2) Heatmap floating-point / image size errors
+
+Symptom: FloatingPointError in seaborn heatmap (invalid value encountered in less) and Image size ... too large for huge images.
+
+Fix: Clean the correlation matrix before plotting: replace inf/-inf with NaN, drop rows with all-NaN, fill NaN with 0 (or mask NaNs), cast to float32, downsample time axis for large-width heatmaps (reduce xtick frequency). Also ensure figsize is reasonable and clip or sample features (top 30 by variance) before plotting. The PDF implemented such fixes at times.
+
+3) CUDA / cuDNN / cuBLAS registration warnings
+
+Symptom: Errors like Unable to register cuDNN factory and failed call to cuInit (GPU issues).
+
+Fix: These are runtime GPU configuration issues on the host. For reproducibility on CPU-only environments, ensure the training code works without a GPU (set CUDA_VISIBLE_DEVICES appropriately or use tf.config.set_visible_devices). In a Kaggle notebook, rely on the provided GPU runtime or explicitly use CPU. These warnings are nuisance-level but can appear when mixing TF builds or plugin factories. 
+
+hulltactical
+
+4) Missing scaler saved
+
+Symptom: Scaler not always persisted, producing mismatch when re-scaling test features.
+
+Fix: Save scaler via pickle (e.g., scaler.pkl) after fit on training features and reload for scoring. The evaluation scripts in the interaction later used this approach; add it to training script. 
+
+hulltactical
+
+5) Submission file format mismatch
+
+Symptom: The notebook saved submission.csv, but competition requires submission.parquet.
+
+Fix: Replace final to_csv with to_parquet("submission.parquet", index=False) and validate column names/order against sample_submission.parquet. 
+
+hulltactical
+
+8 — Reproducibility checklist (what the repo should save & include)
+
+To make the pipeline reproducible and easy for others to run, ensure the repository includes:
+
+notebooks/: the primary notebook(s). Keep a copy that produces submission.parquet in the final cell.
+
+src/: modularized scripts (data loading, preprocessing, features, eda, modeling, training, evaluation, submission).
+
+data/: small sample / sample_submission, or instructions to download. Do NOT commit large CSVs unless allowed.
+
+models/: saved model file (e.g., hull_market_model.keras or .h5) — optionally large, consider hosting via release or instructions to train.
+
+artifacts/feature_list.pkl — exact feature list + order used for training. 
+
+hulltactical
+
+artifacts/scaler.pkl — fitted StandardScaler or RobustScaler instance used to transform features.
+
+artifacts/training_config.json — training parameters (epochs, batch_size, lr, seed) and model architecture summary.
+
+submission.parquet — example submission (optional).
+
+requirements.txt — pinned packages and versions. (Include tensorflow, pandas, numpy, scikit-learn, lightgbm/xgboost optional versions.)
+
+README.md & ANALYSIS.md (this file) explaining run order and how to reproduce training and create submission.parquet.
+
+9 — Recommended quick improvements (short term)
+
+Always save feature_list.pkl and scaler.pkl at training and load them in the evaluation script. This fixes the most frequent runtime error. 
+
+hulltactical
+
+Add robust plotting helpers that clean matrices before heatmaps (replace inf, drop constant cols, sample features). The PDF already shows these patterns; extract them into src/plotting.py. 
+
+hulltactical
+
+Switch final submission save to Parquet and ensure column names match sample_submission.parquet. 
+
+hulltactical
+
+Include a train_config.json so that model architecture + feature list + scaler + training seeds are tied to each saved model file—this helps traceability.
+
+Wrap long-running experiments behind CLI scripts (e.g., python src/train.py --config configs/exp1.json) rather than single notebooks.
+
+10 — Suggested medium/long-term experiments (research directions)
+
+Purged/time-series cross-validation (purged K-fold or expanding window CV) instead of naive random splits — more realistic for financial series.
+
+Ensembles: combine DNN with LightGBM / XGBoost and stacking meta-models.
+
+Objective aligned with the competition metric: try optimizing a Sharpe-like loss or use a custom callback that maximizes the (penalized) Sharpe used by the competition rather than pure MSE.
+
+Volatility-aware modeling: predict conditional volatility (GARCH or DNN volatility head) and incorporate into position sizing.
+
+Transaction costs & slippage: simulate costs to test strategy robustness.
+
+Feature selection & stability: use SHAP values across many CV folds and test for feature stability — keep only stable signals.
+
+Economic interpretation: cluster features into groups (macro/sentiment/price) and test whether model relies on a particular information source.
+
+Significance testing: run Diebold–Mariano tests vs simple benchmarks (e.g., buy-and-hold or lagged returns) to check if gains are statistically significant out-of-sample.
+
+Robustness checks: test across different market regimes (pre-2008, 2008 crisis, post-2010) and do bootstrap/backtest stress testing. 
